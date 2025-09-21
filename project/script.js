@@ -1,4 +1,6 @@
 // Navigation et fonctionnalités principales
+
+let activeCategory = 'all'; // Catégorie active pour la recherche
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
 });
@@ -15,21 +17,32 @@ function initializeApp() {
     cart.updateCartCount();
     cart.renderCart();
 // Barre de recherche dans le catalogue
+
 function setupSearchBar() {
     const searchInput = document.getElementById('catalog-search');
     if (!searchInput) return;
 
-    // Préparer les données pour Fuse.js
     let fuse = null;
     let productData = [];
+
+    function getProductsForActiveCategory() {
+        if (activeCategory === 'all' || activeCategory === 'tous') {
+            return getDisplayProducts('all');
+        } else {
+            return getProductsByCategory(activeCategory);
+        }
+    }
+
     function updateFuseData() {
-        productData = Array.from(document.querySelectorAll('#catalog-products .product-card')).map(card => {
+        // Utilise les produits de la catégorie active
+        const products = getProductsForActiveCategory();
+        productData = products.map(product => {
             return {
-                card,
-                title: card.querySelector('.product-title')?.textContent || '',
-                category: card.querySelector('.product-category')?.textContent || '',
-                qualite: card.querySelector('.product-qualite')?.textContent || '',
-                price: card.querySelector('.product-price')?.textContent || ''
+                product,
+                title: product.title || '',
+                category: product.category || '',
+                qualite: product.qualite || '',
+                price: product.price ? product.price.toString() : ''
             };
         });
         fuse = new Fuse(productData, {
@@ -45,26 +58,31 @@ function setupSearchBar() {
     searchInput.addEventListener('input', function() {
         const query = this.value.trim().toLowerCase();
         if (!fuse) updateFuseData();
+        const catalogContainer = document.getElementById('catalog-products');
         if (!query) {
-            productData.forEach(obj => obj.card.style.display = 'block');
+            // Affiche tous les produits de la catégorie active
+            const products = getProductsForActiveCategory();
+            catalogContainer.innerHTML = products.map(product => createProductCard(product)).join('');
+            setupColorCircles();
             return;
         }
-        // Si la requête est très courte, recherche stricte par préfixe
         let results = [];
         if (query.length <= 2) {
             results = productData.filter(obj => obj.title.toLowerCase().startsWith(query));
-            productData.forEach(obj => obj.card.style.display = 'none');
-            if (results.length > 0) {
-                results.forEach(obj => obj.card.style.display = 'block');
-            }
         } else {
-            // Recherche tolérante aux fautes d'orthographe
             const fuseResults = fuse.search(query);
-            productData.forEach(obj => obj.card.style.display = 'none');
-            if (fuseResults.length > 0) {
-                fuseResults.forEach(res => res.item.card.style.display = 'block');
-            }
+            results = fuseResults.map(res => res.item);
         }
+        // Affiche les résultats filtrés
+        catalogContainer.innerHTML = results.map(obj => createProductCard(obj.product)).join('');
+        setupColorCircles();
+    });
+
+    // Met à jour Fuse quand la catégorie change
+    window.addEventListener('categoryChanged', function(e) {
+        activeCategory = e.detail.category;
+        updateFuseData();
+        searchInput.dispatchEvent(new Event('input'));
     });
 }
 }
@@ -257,17 +275,20 @@ function setupFilters() {
 }
 
 // Filtrer les produits par catégorie
+
 function filterProductsByCategory(category) {
+    activeCategory = category;
     const catalogContainer = document.getElementById('catalog-products');
     let filtered;
     if (category === 'all' || category === 'tous') {
-        // Utilise la fusion pour "tous"
         filtered = getDisplayProducts('all');
     } else {
-        // Liste brute pour les autres catégories
         filtered = getProductsByCategory(category);
     }
     catalogContainer.innerHTML = filtered.map(product => createProductCard(product)).join('');
+    setupColorCircles();
+    // Déclenche un événement pour informer la barre de recherche
+    window.dispatchEvent(new CustomEvent('categoryChanged', { detail: { category } }));
 }
 
 // Configuration du formulaire de contact
